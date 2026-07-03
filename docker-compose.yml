@@ -1,0 +1,36 @@
+services:
+  api:
+    build: .
+    environment:
+      IPATLAS_ENVIRONMENT: local
+      IPATLAS_ADMIN_TOKEN: change-me
+      IPATLAS_DATA_DIR: /app/data
+      IPATLAS_DATABASE_URL: postgresql+psycopg://ipatlas:ipatlas@postgres:5432/ipatlas
+      IPATLAS_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ipatlas
+      POSTGRES_USER: ipatlas
+      POSTGRES_PASSWORD: ipatlas
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres-data:
+

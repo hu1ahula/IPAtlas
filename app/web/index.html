@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IPAtlas</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>IPAtlas</h1>
+          <p>Local IP intelligence lookup</p>
+        </div>
+        <a class="docs-link" href="/docs">OpenAPI</a>
+      </header>
+
+      <section class="workspace">
+        <nav class="tabs" aria-label="Lookup mode">
+          <button class="tab is-active" type="button" data-mode="single">Single</button>
+          <button class="tab" type="button" data-mode="batch">Batch</button>
+          <button class="tab" type="button" data-mode="cidr">CIDR</button>
+        </nav>
+
+        <form class="panel is-active" id="single-form" data-panel="single">
+          <label for="single-ip">IP address</label>
+          <div class="input-row">
+            <input id="single-ip" name="ip" value="8.8.8.8" autocomplete="off" />
+            <label class="check">
+              <input id="single-sources" type="checkbox" />
+              Sources
+            </label>
+            <button type="submit">Lookup</button>
+          </div>
+        </form>
+
+        <form class="panel" id="batch-form" data-panel="batch">
+          <label for="batch-ips">IP addresses</label>
+          <textarea id="batch-ips" rows="8">8.8.8.8
+1.1.1.1
+2606:4700:4700::1111</textarea>
+          <div class="action-row">
+            <label class="check">
+              <input id="batch-sources" type="checkbox" />
+              Sources
+            </label>
+            <button type="submit">Lookup</button>
+          </div>
+        </form>
+
+        <form class="panel" id="cidr-form" data-panel="cidr">
+          <label for="cidr-value">CIDR</label>
+          <div class="input-row">
+            <input id="cidr-value" value="1.1.1.0/24" autocomplete="off" />
+            <button type="submit">Lookup</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="result-wrap">
+        <div class="result-head">
+          <h2>Result</h2>
+          <button id="copy-result" type="button">Copy</button>
+        </div>
+        <pre id="result">{}</pre>
+      </section>
+      <footer class="attribution">
+        <a href="https://db-ip.com" rel="noreferrer">IP Geolocation by DB-IP</a>
+      </footer>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

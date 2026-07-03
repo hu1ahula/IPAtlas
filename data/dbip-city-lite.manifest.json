@@ -1,0 +1,16 @@
+{
+  "attribution": "IP Geolocation by DB-IP",
+  "attribution_url": "https://db-ip.com",
+  "build_epoch": 1782870305,
+  "checksum": "c32d9b6644772de26ec96c1bc1ce0f7796db8b8a",
+  "database_type": "DBIP-City-Lite",
+  "download_url": "https://download.db-ip.com/free/dbip-city-lite-2026-07.mmdb.gz",
+  "downloaded_at": "2026-07-03T15:24:26.358299+00:00",
+  "license": "CC-BY-4.0",
+  "md5": "6893bb371c069d6f3c18057a6f9e68f8",
+  "record_count": 14875922,
+  "sha1": "c32d9b6644772de26ec96c1bc1ce0f7796db8b8a",
+  "source": "dbip-city-lite",
+  "source_type": "geo",
+  "version": "2026-07"
+}
