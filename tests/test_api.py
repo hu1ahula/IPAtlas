@@ -101,6 +101,21 @@ def test_admin_update_requires_token():
     assert response.status_code == 401
 
 
+def test_admin_update_all_route_uses_admin_token(monkeypatch):
+    monkeypatch.setattr(
+        "app.api.routes.update_all_sources",
+        lambda _repo: {"status": "updated", "updated_count": 1, "failed_count": 0, "results": []},
+    )
+
+    with TestClient(app) as client:
+        unauthorized = client.post("/v1/admin/update/all")
+        authorized = client.post("/v1/admin/update/all", headers={"x-admin-token": "change-me"})
+
+    assert unauthorized.status_code == 401
+    assert authorized.status_code == 200
+    assert authorized.json()["status"] == "updated"
+
+
 def test_meta_sources():
     with TestClient(app) as client:
         response = client.get("/v1/meta/sources")

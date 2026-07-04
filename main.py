@@ -5,8 +5,10 @@ import uvicorn
 from app.core.config import get_settings
 from app.intel.geo import MmdbGeoBackend
 from app.intel.repository import InMemoryIntelRepository
+from app.sources.base import load_prefix_snapshots
+from app.sources.registry import available_source_names
 from app.sources.seed import seed_records, seed_sources
-from app.tasks.update import update_source_from_local_file
+from app.tasks.update import update_all_sources, update_source_from_local_file
 
 
 def main() -> None:
@@ -17,17 +19,22 @@ def main() -> None:
     serve.add_argument("--port", default=8000, type=int)
     serve.add_argument("--reload", action="store_true")
     update = subcommands.add_parser("update")
-    update.add_argument("source", choices=["dbip-city-lite"])
+    update.add_argument("source", choices=[*available_source_names(), "all"])
     args = parser.parse_args()
 
     if args.command == "update":
         settings = get_settings()
+        snapshot_records, snapshot_sources = load_prefix_snapshots(settings.data_dir)
         repository = InMemoryIntelRepository(
-            seed_records(),
-            seed_sources(),
+            [*seed_records(), *snapshot_records],
+            [*seed_sources(), *snapshot_sources],
             geo_backend=MmdbGeoBackend(settings.dbip_mmdb_path),
         )
-        result = update_source_from_local_file(repository, args.source)
+        result = (
+            update_all_sources(repository)
+            if args.source == "all"
+            else update_source_from_local_file(repository, args.source)
+        )
         print(result)
         return
 

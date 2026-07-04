@@ -7,5 +7,8 @@ data/*.mmdb
 data/*.mmdb.gz
 data/*.download
 data/*.staging
+data/raw/
+data/prefix/
+data/manifests/
 
 .env

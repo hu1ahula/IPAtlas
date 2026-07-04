@@ -11,6 +11,7 @@ from app.db.bootstrap import initialize_database, record_dataset_update
 from app.intel.cache import LookupCache
 from app.intel.geo import MmdbGeoBackend
 from app.intel.repository import InMemoryIntelRepository
+from app.sources.base import load_prefix_snapshots
 from app.sources.seed import seed_records, seed_sources
 from app.tasks.scheduler import start_scheduler
 from app.tasks.update import SourceUpdateError, update_source_from_local_file
@@ -23,9 +24,10 @@ async def lifespan(app: FastAPI):
     app.state.database = initialize_database()
     geo_backend = MmdbGeoBackend(settings.dbip_mmdb_path)
     cache = LookupCache(settings.redis_url, settings.lookup_cache_ttl_seconds)
+    snapshot_records, snapshot_sources = load_prefix_snapshots(settings.data_dir)
     repository = InMemoryIntelRepository(
-        seed_records(),
-        seed_sources(),
+        [*seed_records(), *snapshot_records],
+        [*seed_sources(), *snapshot_sources],
         geo_backend=geo_backend,
         cache=cache,
     )

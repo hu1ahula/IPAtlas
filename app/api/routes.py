@@ -7,7 +7,7 @@ from app.api.schemas import BatchLookupRequest, RangeLookupRequest
 from app.core.config import get_settings
 from app.core.security import require_admin
 from app.intel.repository import InMemoryIntelRepository
-from app.tasks.update import SourceUpdateError, update_source_from_local_file
+from app.tasks.update import SourceUpdateError, update_all_sources, update_source_from_local_file
 
 router = APIRouter()
 
@@ -101,6 +101,14 @@ def lookup_asn(asn: int, repository: InMemoryIntelRepository = Depends(get_repos
 @router.get("/v1/meta/sources")
 def list_sources(repository: InMemoryIntelRepository = Depends(get_repository)) -> dict:
     return {"sources": repository.sources()}
+
+
+@router.post("/v1/admin/update/all")
+def update_all(
+    _admin: None = Depends(require_admin),
+    repository: InMemoryIntelRepository = Depends(get_repository),
+) -> dict:
+    return update_all_sources(repository)
 
 
 @router.post("/v1/admin/update/{source_name}")

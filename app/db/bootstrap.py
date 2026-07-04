@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Base, DatasetVersion, Source
+from app.db.models import Base, DatasetVersion, IpPrefixRecord, Source
+from app.intel.types import PrefixRecord
 
 
 def initialize_database() -> dict[str, Any]:
@@ -56,6 +57,43 @@ def record_dataset_update(
                     error=error,
                 )
             )
+            session.commit()
+        engine.dispose()
+    except Exception:
+        return
+
+
+def replace_ip_prefix_records(source_name: str, records: list[PrefixRecord]) -> None:
+    settings = get_settings()
+    if not settings.sync_prefix_records_to_database:
+        return
+
+    try:
+        connect_args = {"connect_timeout": 1} if settings.database_url.startswith("postgresql") else {}
+        engine = create_engine(settings.database_url, pool_pre_ping=True, connect_args=connect_args)
+        with Session(engine) as session:
+            session.execute(delete(IpPrefixRecord).where(IpPrefixRecord.source_name == source_name))
+            batch: list[dict] = []
+            for record in records:
+                batch.append(
+                    {
+                        "source_name": record.source,
+                        "dataset_version": record.dataset_version,
+                        "ip_version": record.ip_version,
+                        "cidr": str(record.network),
+                        "start_ip": record.start_ip,
+                        "end_ip": record.end_ip,
+                        "asn": record.asn,
+                        "confidence": record.confidence,
+                        "data": record.data,
+                        "updated_at": record.updated_at,
+                    }
+                )
+                if len(batch) >= settings.prefix_db_sync_batch_size:
+                    session.bulk_insert_mappings(IpPrefixRecord, batch)
+                    batch.clear()
+            if batch:
+                session.bulk_insert_mappings(IpPrefixRecord, batch)
             session.commit()
         engine.dispose()
     except Exception:

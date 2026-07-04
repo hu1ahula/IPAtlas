@@ -4,6 +4,8 @@ import json
 import pytest
 
 from app.intel.repository import InMemoryIntelRepository
+from app.intel.types import PrefixRecord, SourceInfo
+from app.sources.base import write_prefix_snapshot
 from app.sources.local_json import parse_local_json_source
 from app.tasks.update import SourceUpdateError, update_source_from_local_file
 
@@ -71,3 +73,46 @@ def test_update_checksum_mismatch_does_not_switch_index(tmp_path):
 
     assert repo.lookup_ip("203.0.113.7")["found"] is False
 
+
+def test_update_prefix_source_replaces_repository_from_snapshot(tmp_path, monkeypatch):
+    from ipaddress import ip_network
+
+    class FakeAdapter:
+        source_name = "cloud-aws"
+        source_type = "cloud"
+
+        def update(self, data_dir, expected_checksum=None):
+            source = SourceInfo(
+                name="cloud-aws",
+                source_type="cloud",
+                version="unit",
+                license="test",
+            )
+            records = [
+                PrefixRecord(
+                    network=ip_network("3.5.140.0/22"),
+                    source="cloud-aws",
+                    source_type="cloud",
+                    dataset_version="unit",
+                    data={"provider": "AWS", "hosting": True, "region": "ap-northeast-2"},
+                )
+            ]
+            return write_prefix_snapshot(
+                data_dir,
+                source,
+                records,
+                raw_paths=[],
+                raw_checksum=expected_checksum or "raw",
+                expected_checksum=expected_checksum,
+            )
+
+    monkeypatch.setattr("app.tasks.update.build_prefix_source_adapter", lambda _source: FakeAdapter())
+    repo = InMemoryIntelRepository()
+
+    result = update_source_from_local_file(repo, "cloud-aws", data_dir=tmp_path)
+
+    lookup = repo.lookup_ip("3.5.140.1", include_sources=True)
+    assert result["source"] == "cloud-aws"
+    assert result["snapshot_path"].endswith("cloud-aws.jsonl.gz")
+    assert lookup["fields"]["provider"] == "AWS"
+    assert lookup["field_sources"]["provider"]["source"] == "cloud-aws"

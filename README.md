@@ -31,6 +31,32 @@ The update command downloads `data/dbip-city-lite.mmdb` and writes
 if it exists. Set `IPATLAS_AUTO_DOWNLOAD_GEO=true` only when you explicitly want
 the service to try downloading the file during startup.
 
+## Load Public Prefix Intelligence
+
+IPAtlas can also build local prefix snapshots from public ASN, RIR, and cloud
+provider feeds:
+
+```bash
+uv run python main.py update all
+```
+
+You can update a single source by name:
+
+```bash
+uv run python main.py update iptoasn-combined
+uv run python main.py update rir-delegated
+uv run python main.py update cloud-aws
+uv run python main.py update cloud-google
+uv run python main.py update cloud-azure
+uv run python main.py update cloud-cloudflare
+uv run python main.py update cloud-github
+```
+
+Raw downloads are stored in `data/raw/<source>/`, normalized prefix snapshots in
+`data/prefix/<source>.jsonl.gz`, and source manifests in
+`data/manifests/<source>.json`. Startup automatically loads every prefix
+snapshot found in `data/prefix/`.
+
 ## Docker
 
 ```bash
@@ -49,7 +75,8 @@ before you connect real downloadable feeds.
 - `GET /v1/asn/{asn}`: records related to an ASN.
 - `GET /v1/meta/sources`: enabled data sources and versions.
 - `POST /v1/admin/update/{source}`: update a local JSON source.
-  Use `dbip-city-lite` as the source name to download/update DB-IP City Lite.
+  Use `dbip-city-lite` for DB-IP City Lite, or any public prefix source name.
+- `POST /v1/admin/update/all`: update public RIR, ASN, cloud, and geo sources.
 
 ## Local Source Format
 
@@ -80,3 +107,21 @@ before you connect real downloadable feeds.
 ```bash
 uv run pytest
 ```
+
+## Configuration
+
+Useful environment variables:
+
+- `IPATLAS_IPTOASN_COMBINED_URL`
+- `IPATLAS_AWS_IP_RANGES_URL`
+- `IPATLAS_GOOGLE_CLOUD_RANGES_URL`
+- `IPATLAS_AZURE_SERVICE_TAGS_PAGE`
+- `IPATLAS_AZURE_SERVICE_TAGS_URL`
+- `IPATLAS_AZURE_VERIFY_TLS`
+- `IPATLAS_CLOUDFLARE_IPV4_URL`
+- `IPATLAS_CLOUDFLARE_IPV6_URL`
+- `IPATLAS_GITHUB_META_URL`
+- `IPATLAS_SYNC_PREFIX_RECORDS_TO_DATABASE`
+
+Keep `IPATLAS_AZURE_VERIFY_TLS=true` unless your local network terminates TLS
+with a custom CA and you cannot provide that CA to Python/httpx.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from ipaddress import IPv4Network, IPv6Network
 from threading import RLock
 from typing import Iterable
@@ -178,8 +179,21 @@ class InMemoryIntelRepository:
     def _cache_key(self, ip: str, include_sources: bool) -> str:
         return (
             "ipatlas:lookup:"
-            f"{self._records_version}:"
+            f"{self._prefix_version_token()}:"
             f"{self._geo_backend.version_token}:"
             f"{int(include_sources)}:"
             f"{ip}"
         )
+
+    def _prefix_version_token(self) -> str:
+        with self._lock:
+            digest = hashlib.sha256()
+            digest.update(str(self._records_version).encode())
+            for source in sorted(self._sources.values(), key=lambda item: item.name):
+                digest.update(source.name.encode())
+                digest.update(b":")
+                digest.update(source.version.encode())
+                digest.update(b":")
+                digest.update(str(source.metadata.get("checksum") or "").encode())
+                digest.update(b"\0")
+            return digest.hexdigest()[:20]
