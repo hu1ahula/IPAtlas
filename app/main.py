@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from threading import Thread
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -24,13 +25,13 @@ async def lifespan(app: FastAPI):
     app.state.database = initialize_database()
     geo_backend = MmdbGeoBackend(settings.dbip_mmdb_path)
     cache = LookupCache(settings.redis_url, settings.lookup_cache_ttl_seconds)
-    snapshot_records, snapshot_sources = load_prefix_snapshots(settings.data_dir)
     repository = InMemoryIntelRepository(
-        [*seed_records(), *snapshot_records],
-        [*seed_sources(), *snapshot_sources],
+        seed_records(),
+        seed_sources(),
         geo_backend=geo_backend,
         cache=cache,
     )
+    app.state.prefix_snapshot_loader = start_prefix_snapshot_loader(repository, settings.data_dir)
     if settings.auto_download_geo and not geo_backend.loaded:
         try:
             update_source_from_local_file(repository, "dbip-city-lite")
@@ -70,3 +71,44 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
+
+
+def start_prefix_snapshot_loader(
+    repository: InMemoryIntelRepository,
+    data_dir: Path,
+) -> Thread:
+    thread = Thread(
+        target=load_prefix_snapshots_in_background,
+        args=(repository, data_dir),
+        name="ipatlas-prefix-snapshot-loader",
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
+def load_prefix_snapshots_in_background(
+    repository: InMemoryIntelRepository,
+    data_dir: Path,
+) -> None:
+    repository.set_prefix_snapshot_status({"status": "loading", "record_count": 0})
+    try:
+        snapshot_records, snapshot_sources = load_prefix_snapshots(data_dir)
+        if snapshot_sources:
+            repository.replace_sources(snapshot_sources, snapshot_records)
+        repository.set_prefix_snapshot_status(
+            {
+                "status": "loaded",
+                "record_count": len(snapshot_records),
+                "source_count": len(snapshot_sources),
+                "sources": [source.name for source in snapshot_sources],
+            }
+        )
+    except Exception as exc:
+        repository.set_prefix_snapshot_status(
+            {
+                "status": "failed",
+                "record_count": 0,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        )

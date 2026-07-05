@@ -16,6 +16,17 @@ def _bad_request(exc: Exception) -> HTTPException:
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
+def _resolve_pagination(limit: int | None, offset: int) -> tuple[int, int]:
+    settings = get_settings()
+    resolved_limit = limit if limit is not None else settings.query_default_limit
+    if resolved_limit > settings.query_max_limit:
+        raise HTTPException(
+            status_code=422,
+            detail=f"limit must be <= {settings.query_max_limit}",
+        )
+    return resolved_limit, offset
+
+
 @router.get("/healthz")
 def healthz() -> dict:
     return {"status": "ok"}
@@ -30,6 +41,7 @@ def readyz(repository: InMemoryIntelRepository = Depends(get_repository)) -> dic
     return {
         "status": "ok" if repository.record_count > 0 else "degraded",
         "index": {"ok": repository.record_count > 0, "record_count": repository.record_count},
+        "prefix_snapshots": repository.prefix_snapshot_status(),
         "geo_backend": repository.geo_status(),
         "database": db_status,
         "redis": redis_status,
@@ -72,10 +84,13 @@ def lookup_ip_batch(
 @router.get("/v1/cidr/{cidr:path}")
 def lookup_cidr(
     cidr: str,
+    limit: int | None = Query(default=None, ge=1),
+    offset: int = Query(default=0, ge=0),
     repository: InMemoryIntelRepository = Depends(get_repository),
 ) -> dict:
     try:
-        return repository.query_cidr(cidr)
+        resolved_limit, resolved_offset = _resolve_pagination(limit, offset)
+        return repository.query_cidr(cidr, limit=resolved_limit, offset=resolved_offset)
     except (ValueError, AddressValueError, NetmaskValueError) as exc:
         raise _bad_request(exc) from exc
 
@@ -83,19 +98,33 @@ def lookup_cidr(
 @router.post("/v1/range")
 def lookup_range(
     request: RangeLookupRequest,
+    limit: int | None = Query(default=None, ge=1),
+    offset: int = Query(default=0, ge=0),
     repository: InMemoryIntelRepository = Depends(get_repository),
 ) -> dict:
     try:
-        return repository.query_range(request.start_ip, request.end_ip)
+        resolved_limit, resolved_offset = _resolve_pagination(limit, offset)
+        return repository.query_range(
+            request.start_ip,
+            request.end_ip,
+            limit=resolved_limit,
+            offset=resolved_offset,
+        )
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
 
 @router.get("/v1/asn/{asn}")
-def lookup_asn(asn: int, repository: InMemoryIntelRepository = Depends(get_repository)) -> dict:
+def lookup_asn(
+    asn: int,
+    limit: int | None = Query(default=None, ge=1),
+    offset: int = Query(default=0, ge=0),
+    repository: InMemoryIntelRepository = Depends(get_repository),
+) -> dict:
     if asn < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ASN must be positive")
-    return repository.query_asn(asn)
+    resolved_limit, resolved_offset = _resolve_pagination(limit, offset)
+    return repository.query_asn(asn, limit=resolved_limit, offset=resolved_offset)
 
 
 @router.get("/v1/meta/sources")

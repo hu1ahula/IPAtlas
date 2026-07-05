@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from ipaddress import IPv4Network, IPv6Network
-from threading import RLock
+from threading import Lock, RLock
 from typing import Iterable
 
 from app.intel.cache import LookupCache
@@ -25,12 +26,15 @@ class InMemoryIntelRepository:
         cache: LookupCache | None = None,
     ):
         self._lock = RLock()
+        self._mutation_lock = Lock()
         self._records: list[PrefixRecord] = list(records or [])
         self._sources: dict[str, SourceInfo] = {source.name: source for source in sources or []}
         self._index = PrefixIndex(self._records)
+        self._asn_index = self._build_asn_index(self._records)
         self._geo_backend = geo_backend or NullGeoBackend()
         self._cache = cache
         self._records_version = 0
+        self._prefix_snapshot_status: dict[str, object] = {"status": "not_started"}
 
     @property
     def record_count(self) -> int:
@@ -84,18 +88,19 @@ class InMemoryIntelRepository:
             self._cache.set(cache_key, result)
         return result
 
-    def query_cidr(self, value: str) -> dict:
+    def query_cidr(self, value: str, limit: int = 100, offset: int = 0) -> dict:
         network = parse_network(value)
         with self._lock:
             records = [record for record in self._records if record.overlaps(network)]
+        page = self._paginate_records(self._sort_records(records), limit=limit, offset=offset)
         return {
             "cidr": str(network),
             "ip_version": network.version,
             "record_count": len(records),
-            "records": [record.to_summary() for record in self._sort_records(records)],
+            **page,
         }
 
-    def query_range(self, start_ip: str, end_ip: str) -> dict:
+    def query_range(self, start_ip: str, end_ip: str, limit: int = 100, offset: int = 0) -> dict:
         start, end = parse_ip_range(start_ip, end_ip)
         networks = range_to_networks(start_ip, end_ip)
         with self._lock:
@@ -104,43 +109,74 @@ class InMemoryIntelRepository:
                 for record in self._records
                 if record.network.version == start.version and any(record.overlaps(network) for network in networks)
             ]
+        page = self._paginate_records(self._sort_records(records), limit=limit, offset=offset)
         return {
             "start_ip": str(start),
             "end_ip": str(end),
             "ip_version": start.version,
             "record_count": len(records),
-            "records": [record.to_summary() for record in self._sort_records(records)],
+            **page,
         }
 
-    def query_asn(self, asn: int) -> dict:
+    def query_asn(self, asn: int, limit: int = 100, offset: int = 0) -> dict:
         with self._lock:
-            records = [record for record in self._records if record.asn == asn]
+            records = list(self._asn_index.get(asn, []))
+        page = self._paginate_records(self._sort_records(records), limit=limit, offset=offset)
         return {
             "asn": asn,
             "record_count": len(records),
-            "records": [record.to_summary() for record in self._sort_records(records)],
+            **page,
         }
 
     def replace_source(self, source: SourceInfo, records: Iterable[PrefixRecord]) -> None:
-        new_records = list(records)
-        for record in new_records:
-            if record.source != source.name:
-                raise ValueError(f"record source {record.source!r} does not match {source.name!r}")
+        self.replace_sources([source], records)
 
-        with self._lock:
-            kept = [record for record in self._records if record.source != source.name]
-            self._records = kept + new_records
-            self._sources[source.name] = SourceInfo(
-                **{
-                    **source.to_dict(),
-                    "updated_at": source.updated_at,
-                    "record_count": len(new_records),
-                }
-            )
-            self._index = PrefixIndex(self._records)
-            self._records_version += 1
+    def replace_sources(
+        self,
+        sources: Iterable[SourceInfo],
+        records: Iterable[PrefixRecord],
+    ) -> None:
+        new_sources = list(sources)
+        new_records = list(records)
+        source_names = {source.name for source in new_sources}
+        for record in new_records:
+            if record.source not in source_names:
+                raise ValueError(f"record source {record.source!r} has no matching SourceInfo")
+
+        with self._mutation_lock:
+            with self._lock:
+                kept = [record for record in self._records if record.source not in source_names]
+                source_map = dict(self._sources)
+
+            all_records = kept + new_records
+            new_index = PrefixIndex(all_records)
+            new_asn_index = self._build_asn_index(all_records)
+            record_counts = Counter(record.source for record in new_records)
+            for source in new_sources:
+                source_map[source.name] = SourceInfo(
+                    **{
+                        **source.to_dict(),
+                        "updated_at": source.updated_at,
+                        "record_count": record_counts[source.name],
+                    }
+                )
+
+            with self._lock:
+                self._records = all_records
+                self._sources = source_map
+                self._index = new_index
+                self._asn_index = new_asn_index
+                self._records_version += 1
         if self._cache is not None:
             self._cache.clear_namespace()
+
+    def set_prefix_snapshot_status(self, status: dict[str, object]) -> None:
+        with self._lock:
+            self._prefix_snapshot_status = dict(status)
+
+    def prefix_snapshot_status(self) -> dict[str, object]:
+        with self._lock:
+            return dict(self._prefix_snapshot_status)
 
     def geo_status(self) -> dict:
         return self._geo_backend.status()
@@ -175,6 +211,29 @@ class InMemoryIntelRepository:
             ),
             reverse=True,
         )
+
+    @staticmethod
+    def _build_asn_index(records: list[PrefixRecord]) -> dict[int, list[PrefixRecord]]:
+        index: dict[int, list[PrefixRecord]] = {}
+        for record in records:
+            asn = record.asn
+            if asn is None:
+                continue
+            index.setdefault(asn, []).append(record)
+        return index
+
+    @staticmethod
+    def _paginate_records(records: list[PrefixRecord], limit: int, offset: int) -> dict:
+        total_count = len(records)
+        page = records[offset : offset + limit]
+        return {
+            "total_count": total_count,
+            "returned_count": len(page),
+            "limit": limit,
+            "offset": offset,
+            "truncated": offset + len(page) < total_count,
+            "records": [record.to_summary() for record in page],
+        }
 
     def _cache_key(self, ip: str, include_sources: bool) -> str:
         return (

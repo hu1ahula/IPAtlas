@@ -94,6 +94,35 @@ def test_cidr_and_asn_routes():
     assert asn_response.json()["record_count"] >= 1
 
 
+def test_cidr_and_asn_routes_support_limit_and_offset():
+    with TestClient(app) as client:
+        cidr_response = client.get("/v1/cidr/1.1.1.0%2F24?limit=1&offset=0")
+        asn_response = client.get("/v1/asn/13335?limit=1&offset=0")
+
+    assert cidr_response.status_code == 200
+    cidr_payload = cidr_response.json()
+    assert cidr_payload["limit"] == 1
+    assert cidr_payload["offset"] == 0
+    assert cidr_payload["returned_count"] == 1
+    assert "truncated" in cidr_payload
+    assert asn_response.status_code == 200
+    asn_payload = asn_response.json()
+    assert asn_payload["limit"] == 1
+    assert asn_payload["returned_count"] == 1
+    assert asn_payload["truncated"] is True
+
+
+def test_query_limit_validation():
+    with TestClient(app) as client:
+        limit_response = client.get("/v1/asn/13335?limit=0")
+        max_limit_response = client.get("/v1/asn/13335?limit=1001")
+        offset_response = client.get("/v1/cidr/1.1.1.0%2F24?offset=-1")
+
+    assert limit_response.status_code == 422
+    assert max_limit_response.status_code == 422
+    assert offset_response.status_code == 422
+
+
 def test_admin_update_requires_token():
     with TestClient(app) as client:
         response = client.post("/v1/admin/update/manual-lab")
@@ -122,3 +151,24 @@ def test_meta_sources():
 
     assert response.status_code == 200
     assert response.json()["sources"]
+
+
+def test_startup_does_not_wait_for_prefix_snapshot_loader(monkeypatch):
+    import threading
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_loader(_data_dir):
+        entered.set()
+        release.wait(timeout=5)
+        return [], []
+
+    monkeypatch.setattr("app.main.load_prefix_snapshots", slow_loader)
+
+    with TestClient(app) as client:
+        assert entered.wait(timeout=1)
+        response = client.get("/healthz")
+        release.set()
+
+    assert response.status_code == 200

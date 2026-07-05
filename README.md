@@ -1,5 +1,7 @@
 # IPAtlas
 
+[中文快速上手](README.zh-CN.md)
+
 IPAtlas is a local IP intelligence Web service. It stores intelligence by IP
 prefix instead of one row per IP address, builds an in-memory longest-prefix
 lookup index, and exposes REST APIs plus a lightweight Web query console.
@@ -70,9 +72,9 @@ before you connect real downloadable feeds.
 
 - `GET /v1/ip/{ip}`: single IPv4/IPv6 lookup.
 - `POST /v1/ip/batch`: batch lookup, up to 1,000 IPs by default.
-- `GET /v1/cidr/{cidr}`: records overlapping a CIDR.
-- `POST /v1/range`: records overlapping a start/end IP range.
-- `GET /v1/asn/{asn}`: records related to an ASN.
+- `GET /v1/cidr/{cidr}`: records overlapping a CIDR, with `limit`/`offset`.
+- `POST /v1/range`: records overlapping a start/end IP range, with `limit`/`offset`.
+- `GET /v1/asn/{asn}`: records related to an ASN, with `limit`/`offset`.
 - `GET /v1/meta/sources`: enabled data sources and versions.
 - `POST /v1/admin/update/{source}`: update a local JSON source.
   Use `dbip-city-lite` for DB-IP City Lite, or any public prefix source name.
@@ -122,6 +124,8 @@ Useful environment variables:
 - `IPATLAS_CLOUDFLARE_IPV6_URL`
 - `IPATLAS_GITHUB_META_URL`
 - `IPATLAS_SYNC_PREFIX_RECORDS_TO_DATABASE`
+- `IPATLAS_QUERY_DEFAULT_LIMIT`
+- `IPATLAS_QUERY_MAX_LIMIT`
 
 Keep `IPATLAS_AZURE_VERIFY_TLS=true` unless your local network terminates TLS
 with a custom CA and you cannot provide that CA to Python/httpx.
