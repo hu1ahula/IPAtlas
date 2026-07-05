@@ -12,3 +12,5 @@ data/prefix/
 data/manifests/
 
 .env
+
+tests/load/results/
