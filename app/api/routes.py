@@ -6,6 +6,7 @@ from app.api.deps import get_repository
 from app.api.schemas import BatchLookupRequest, RangeLookupRequest
 from app.core.config import get_settings
 from app.core.security import require_admin
+from app.intel.ipapi import format_lookup_error, format_lookup_response
 from app.intel.repository import InMemoryIntelRepository
 from app.tasks.update import SourceUpdateError, update_all_sources, update_source_from_local_file
 
@@ -55,7 +56,8 @@ def lookup_ip(
     repository: InMemoryIntelRepository = Depends(get_repository),
 ) -> dict:
     try:
-        return repository.lookup_ip(ip, include_sources=include_sources)
+        lookup = repository.lookup_ip(ip, include_sources=include_sources)
+        return format_lookup_response(ip, lookup, include_sources=include_sources)
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
@@ -75,9 +77,10 @@ def lookup_ip_batch(
     results = []
     for value in request.ips:
         try:
-            results.append(repository.lookup_ip(value, include_sources=request.include_sources))
+            lookup = repository.lookup_ip(value, include_sources=request.include_sources)
+            results.append(format_lookup_response(value, lookup, include_sources=request.include_sources))
         except ValueError as exc:
-            results.append({"ip": value, "found": False, "error": str(exc)})
+            results.append(format_lookup_error(value, str(exc)))
     return {"count": len(results), "results": results}
 
 

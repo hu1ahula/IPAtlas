@@ -25,9 +25,12 @@ def test_lookup_non_seed_ip_from_geo_backend(monkeypatch):
                 data={
                     "country": "CN",
                     "country_name": "China",
+                    "continent": "AS",
+                    "continent_name": "Asia",
                     "city": "Nanjing",
                     "latitude": 32.06,
                     "longitude": 118.78,
+                    "timezone": "Asia/Shanghai",
                     "attribution": "IP Geolocation by DB-IP",
                     "attribution_url": "https://db-ip.com",
                 },
@@ -54,9 +57,16 @@ def test_lookup_non_seed_ip_from_geo_backend(monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["found"] is True
-    assert payload["fields"]["country"] == "CN"
-    assert payload["fields"]["city"] == "Nanjing"
+    assert payload["query"] == "114.114.114.114"
+    assert payload["status"] == "success"
+    assert payload["continent"] == "Asia"
+    assert payload["continentCode"] == "AS"
+    assert payload["country"] == "China"
+    assert payload["countryCode"] == "CN"
+    assert payload["city"] == "Nanjing"
+    assert payload["lat"] == 32.06
+    assert payload["lon"] == 118.78
+    assert payload["offset"] == 28800
     assert payload["field_sources"]["country"]["source"] == "dbip-city-lite"
 
 
@@ -66,9 +76,14 @@ def test_lookup_seed_ip():
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["found"] is True
-    assert payload["fields"]["asn"] == 15169
-    assert payload["fields"]["country"] == "US"
+    assert payload["query"] == "8.8.8.8"
+    assert payload["status"] == "success"
+    assert payload["country"] == "United States"
+    assert payload["countryCode"] == "US"
+    assert payload["city"] == "Mountain View"
+    assert payload["isp"] == "Google"
+    assert payload["org"] == "Google LLC"
+    assert payload["as"] == "AS15169 Google"
 
 
 def test_batch_lookup_handles_invalid_ip():
@@ -78,9 +93,11 @@ def test_batch_lookup_handles_invalid_ip():
     assert response.status_code == 200
     payload = response.json()
     assert payload["count"] == 2
-    assert payload["results"][0]["found"] is True
-    assert payload["results"][1]["found"] is False
-    assert "error" in payload["results"][1]
+    assert payload["results"][0]["query"] == "1.1.1.1"
+    assert payload["results"][0]["status"] == "success"
+    assert payload["results"][1]["query"] == "not-an-ip"
+    assert payload["results"][1]["status"] == "fail"
+    assert "message" in payload["results"][1]
 
 
 def test_cidr_and_asn_routes():

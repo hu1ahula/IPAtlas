@@ -113,7 +113,7 @@ function lookupSingleIp(includeSources) {
   assertOk(res, endpoint);
   if (CHECK_BODY && res.status === 200) {
     check(res, {
-      [`${endpoint}: body has ip`]: (r) => Boolean(jsonField(safeJson(r), "ip")),
+      [`${endpoint}: body has query`]: (r) => Boolean(jsonField(safeJson(r), "query")),
     });
   }
 }
